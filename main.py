@@ -5,94 +5,123 @@ import os
 import random
 import skvideo.io
 from moviepy.editor import *
+import argparse
+import sys
+import glob
+import progress
+from progress.bar import Bar
 
-img_dir, vid_mul = './jpn/', 1
-# img_dir, vid_mul = './bdc/down/', 10
+parser = argparse.ArgumentParser()
+parser.add_argument('--vid_dir', '-v', default='./videos/')
+parser.add_argument('--vid_mul', '-vm', default=1, type=int)
+parser.add_argument('--begin', '-b', default='')
+parser.add_argument('--end', '-e', default='')
+parser.add_argument('--shuffle','-s',default=True, action='store_true')
+parser.add_argument('--output', '-o',default='output.mp4')
+parser.add_argument('--vid_len','-vl', default=59.7, type=float)
+parser.add_argument('--vertical', default=False, action='store_true')
+parser.add_argument('--vid_limit',default=None, type=int)
+parser.add_argument('--audio', '-a', default='./gimme_trim.m4a')
+parser.add_argument('--square',default=False,action='store_true')
+
+
+args = parser.parse_args(sys.argv[1:])
+
+# vid_dir, vid_mul = './videos/jpn_//', 1
+vid_dir = args.vid_dir+'/'
+vid_mul = args.vid_mul
+vid_begin = args.begin.split(',')
+vid_end = args.end.split(',')
+shuffle = args.shuffle
+output_fn = args.output
+temp_output_fn = 'temp_'+output_fn
+audio_file = args.audio
+if not os.path.exists(audio_file):
+    print("Audio file {} does not exist".format(audio_file))
+    exit()
+# vid_dir, vid_mul = './bdc/down/', 10
 imgs = []
 
-max_max_dim = 0
-
-ar = 16/9.
+ar = 16/9
 vid_res = 480
 vid_dim = (vid_res,int(ar*vid_res))
 vid_dim = (2000,2000)
 vid_dim = (360,640)
-if img_dir == './jpn/':
-    vid_dim = (int(4/5*640), 640)
-else:
-    vid_dim = (640,360) 
+# if 'jpn' in vid_dir:
+#     vid_dim = (int(4/5*640), 640)
+# else:
+#     vid_dim = (640,360) 
+vert = args.vertical
 
 fps = 30
-out = cv2.VideoWriter(
-    img_dir+'output.mp4',
-    # cv2.cv.CV_FOURCC('m','p','4','v'),
-    cv2.VideoWriter_fourcc('m','p','4','v'),
-    fps,
-    vid_dim,
-    )
 
-vid_list = os.listdir(img_dir)
-for rm_file in ['.DS_Store', 'output.mp4', 'final.mp4']:
+# vid_list = os.listdir(vid_dir)
+vid_list = glob.glob(vid_dir+'*')
+# vid_list.sort()
+for rm_file in ['.DS_Store', temp_output_fn, output_fn]:
     try:
-        vid_list.remove(rm_file)
+        vid_list.remove(vid_dir+rm_file)
+        print("Skipping {}".format(rm_file))
     except:
-        pass
+        print("Could not skip {}".format(rm_file))
+
 vid_list *= vid_mul
-random.shuffle(vid_list)
+if shuffle:
+    random.shuffle(vid_list)
+else:
+    vid_list = sorted(vid_list)
 
-add_begin = [
-    'IMG_9178.mov',
-    'IMG_2824.mov',
-    '8ee369d3d69f46abb5d9c9247ce8665e.mov'
-]
-add_end = [
-    'IMG_4457.mov',
-    'video_afd0e95e5efc429582a0afac3e990cbe.mov',
-]
 
-# definite start and end - should be arguable
-if img_dir == './jpn/':
-    for v in add_begin[::-1]:
+# vid_begin = [
+#     'IMG_9178.mov',
+#     'IMG_2824.mov',
+#     '8ee369d3d69f46abb5d9c9247ce8665e.mov'
+# ]
+# vid_end = [
+#     'IMG_4457.mov',
+#     'video_afd0e95e5efc429582a0afac3e990cbe.mov',
+# ]
+
+for v in vid_begin[::-1]:
+    try:
         vid_list.remove(v)
         vid_list.insert(0,v)
-    for v in add_end:
+    except:
+        print("Could not shift {} to beginning".format(v))
+for v in vid_end:
+    try:
         vid_list.remove(v)
         vid_list.append(v)
-else:
-    # vid_list = vid_list[:2]
-    pass
+    except:
+        print("Could not shift {} to end".format(v))
 
 # video length in seconds
-vid_len = 59.7
-# vid_len = 51
+vid_len = args.vid_len
 # how many frames for each clip
-len_clip = 7
 len_clip = int(vid_len*fps/len(vid_list))
 print("{} frames for each of the {} videos".format(len_clip, len(vid_list)))
 
-rem_clips = (vid_len*fps)-(len_clip*len(vid_list))
+rem_clips = int((vid_len*fps)-(len_clip*len(vid_list)))
 rem_ctr = 0
-# rem_clips = 0
 print("{} clips will be extended to {} frames".format(rem_clips,len_clip+1))
+# truncate if flagged
+vid_limit = args.vid_limit
+vid_list = vid_list if vid_limit is None else vid_list[:vid_limit]
 
-# problem_vid_id = '6921'
-# vid_list.remove('IMG_{}.mov'.format(problem_vid_id))
-# vid_list.insert(0,'IMG_{}.mov'.format(problem_vid_id))
-# vid_list = vid_list[:2]
-
+bar = Bar('Processing',max=len(vid_list))
+bar.start()
+# try:
 for i,vid_name in enumerate(vid_list):
-    print("Processing {}, {}/{}".format(vid_name, i, len(vid_list)))
+    bar.next()
+    # print("Processing {}, {}/{}".format(vid_name, i, len(vid_list)))
     try:
-        vid_data = skvideo.io.FFmpegReader(img_dir+vid_name)
+        vid_data = skvideo.io.FFmpegReader(vid_name)
         (clip_len, h, w, _) = vid_data.getShape()
     except:
         # guess that it's a 1-sec long vertical video
         clip_len = 30
         h, w = 640,360
-    # print(h,w)
-    vertical = True if h>w else False
-    # vertical = True
-    vidcap = cv2.VideoCapture(img_dir+vid_name)
+    vidcap = cv2.VideoCapture(vid_name)
     vid_start = np.random.choice(
         range(clip_len*3//4-len_clip),
         )
@@ -102,10 +131,28 @@ for i,vid_name in enumerate(vid_list):
         success, img = vidcap.read()
     vid_size = img.shape
     # print(vid_size)
-    vertical = vid_size[0]<vid_size[1]
-    if 'video' not in vid_name and img_dir == './jpn/':
-        if vertical:
-            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    rotate = vid_size[0]<vid_size[1]
+    print("rotate {}".format(rotate))
+
+    if i == 0:
+        vid_dim = (vid_size[0],vid_size[1])
+        vertical = h>w
+        vid_dim = vid_dim if vertical else vid_dim[::-1]
+        print(vid_dim)
+        print(vertical)
+        if args.square:
+            vid_dim = tuple([np.max(vid_dim)]*2)
+        out = cv2.VideoWriter(
+            vid_dir+temp_output_fn,
+            # cv2.cv.CV_FOURCC('m','p','4','v'),
+            cv2.VideoWriter_fourcc('m','p','4','v'),
+            fps,
+            # vid_dim if vertical else vid_dim[::-1],
+            vid_dim,
+            )
+    if rotate and vertical:
+        print("rotating "+vid_name)
+        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         # else:
         #     img = cv2.rotate(img, cv2.ROTATE_180)
 
@@ -118,19 +165,13 @@ for i,vid_name in enumerate(vid_list):
 
     vid_size = img.shape
     max_dim = np.max(vid_size)
-    try:
+    # print(vid_size, vid_dim)
+    if rotate and vertical:
         x_diff, y_diff = (vid_dim[1]-vid_size[0])//2,(vid_dim[0]-vid_size[1])//2
-    except:
+    else:
         x_diff, y_diff = (vid_dim[0]-vid_size[0])//2,(vid_dim[1]-vid_size[1])//2
 
-
-    clip_ctr = 0 if (rem_ctr>rem_clips) else -1
-
-
-    # p_ext = (rem_clips-rem_ctr)/rem_clips
-    # # definitely extend if running out of clips
-    # if len(vid_list)<=(rem_clips-rem_ctr):
-    #     p_ext = 1
+    # probabilistically extend a clip to meet frame quota
     p_ext = np.min([(rem_clips-rem_ctr)/(len(vid_list)-i),1.0])
     clip_ctr = np.random.choice(
         [0,-1],
@@ -153,27 +194,30 @@ for i,vid_name in enumerate(vid_list):
         #     success,img = vidcap.read()
         # if success:
         success, img = vidcap.read()
-        if 'video' not in vid_name and img_dir == './jpn/':
-            if vertical:
-                img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        if rotate and vertical:
+            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
             # else:
             #     img = cv2.rotate(img, cv2.ROTATE_180)
         # img = img[:,mid_dim-w_dim//2:mid_dim+w_dim//2,:]
         clip_ctr += 1
 
     # rem_ctr += 1
-
+# except:
+#     print("Failed on {}".format(vid_name))
+bar.finish()
 
 out.release()
 
+print(vid_dir+temp_output_fn)
 # attach audio
-vid = VideoFileClip(img_dir+"output.mp4")
-aud = AudioFileClip("./gimme_trim.m4a").set_duration(vid.duration)
+vid = VideoFileClip(vid_dir+temp_output_fn)
+aud = AudioFileClip(audio_file).set_duration(vid.duration)
 vid = vid.set_audio(aud)
-vid.write_videofile(img_dir+"final.mp4",
+vid.write_videofile(
+    vid_dir+output_fn,
     audio=True,
-    # temp_audiofile="temp-audio.m4a", remove_temp=True,
-    codec="libx264", audio_codec="aac")
+    codec="libx264",
+    audio_codec="aac")
 
 
 
