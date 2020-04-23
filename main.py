@@ -12,7 +12,7 @@ import progress
 from progress.bar import Bar
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--vid_dir', '-v', default='./videos/')
+parser.add_argument('--vid_dir', '-v', default='./videos')
 parser.add_argument('--vid_mul', '-vm', default=1, type=int)
 parser.add_argument('--begin', '-b', default='')
 parser.add_argument('--end', '-e', default='')
@@ -28,7 +28,9 @@ parser.add_argument('--square',default=False,action='store_true')
 args = parser.parse_args(sys.argv[1:])
 
 # vid_dir, vid_mul = './videos/jpn_//', 1
-vid_dir = args.vid_dir+'/'
+vid_dir = args.vid_dir
+vid_dir += '' if vid_dir[-1]=='/' else '/'
+print(vid_dir)
 vid_mul = args.vid_mul
 vid_begin = args.begin.split(',')
 vid_end = args.end.split(',')
@@ -59,6 +61,7 @@ fps = 30
 vid_list = glob.glob(vid_dir+'*')
 # vid_list.sort()
 for rm_file in ['.DS_Store', temp_output_fn, output_fn]:
+    print(vid_dir+rm_file)
     try:
         vid_list.remove(vid_dir+rm_file)
         print("Skipping {}".format(rm_file))
@@ -96,7 +99,8 @@ for v in vid_end:
         print("Could not shift {} to end".format(v))
 
 # video length in seconds
-vid_len = args.vid_len
+# assuming each video is one second
+vid_len = np.min([args.vid_len,len(vid_list)//2])
 # how many frames for each clip
 len_clip = int(vid_len*fps/len(vid_list))
 print("{} frames for each of the {} videos".format(len_clip, len(vid_list)))
@@ -113,7 +117,7 @@ bar.start()
 # try:
 for i,vid_name in enumerate(vid_list):
     bar.next()
-    # print("Processing {}, {}/{}".format(vid_name, i, len(vid_list)))
+    print("Processing {}, {}/{}".format(vid_name, i, len(vid_list)))
     try:
         vid_data = skvideo.io.FFmpegReader(vid_name)
         (clip_len, h, w, _) = vid_data.getShape()
@@ -166,9 +170,10 @@ for i,vid_name in enumerate(vid_list):
     vid_size = img.shape
     max_dim = np.max(vid_size)
     # print(vid_size, vid_dim)
-    if rotate and vertical:
-        x_diff, y_diff = (vid_dim[1]-vid_size[0])//2,(vid_dim[0]-vid_size[1])//2
-    else:
+    # if rotate and vertical:
+        # print("a")
+    x_diff, y_diff = (vid_dim[1]-vid_size[0])//2,(vid_dim[0]-vid_size[1])//2
+    if x_diff<0 or y_diff<0:
         x_diff, y_diff = (vid_dim[0]-vid_size[0])//2,(vid_dim[1]-vid_size[1])//2
 
     # probabilistically extend a clip to meet frame quota
