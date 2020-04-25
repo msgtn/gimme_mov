@@ -2,5 +2,5 @@
 *.m4a
 *.mov
 videos/*
-*venv
+*venv*
 *.sh
